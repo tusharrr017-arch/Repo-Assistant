@@ -139,6 +139,3 @@ Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs) w
 
 ---
 
-## License
-
-MIT (or as specified in the repo).
