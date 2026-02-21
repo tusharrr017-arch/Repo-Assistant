@@ -98,4 +98,3 @@ OPENAI_API_KEY=sk-or-v1-your-openrouter-key
 ```
 
 Model names default to `openai/text-embedding-3-small` and `openai/gpt-4o-mini` when the base URL contains `openrouter`. You can override with `OPENAI_EMBEDDING_MODEL` and `OPENAI_CHAT_MODEL` if needed.
-# Repo-Assistant
