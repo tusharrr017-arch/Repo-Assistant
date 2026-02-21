@@ -1,100 +1,144 @@
 # Codebase Q&A with Proof
 
-A monorepo app that lets you upload a ZIP of a codebase or connect a public GitHub repo, ask questions about the code, and get answers grounded in retrieved code snippets with file paths and line ranges (proof).
+Ask questions about your codebase and get answers grounded in retrieved code, with **file and line references**. Index via **ZIP upload** or **public GitHub repo URL**, then ask questions or generate refactor suggestions.
 
-**Live link:** [To be filled after deployment]
+## Features
 
-## What is implemented
+- **Index codebase** — Upload a ZIP of your repo or paste a public GitHub URL; the backend extracts code, chunks it, and embeds it in a vector store (ChromaDB).
+- **Q&A** — Ask natural-language questions; answers cite specific files and line ranges with snippets.
+- **Refactor suggestions** — Generate improvement ideas with file references from the indexed code.
+- **History** — Recent Q&A entries and indexing events.
+- **Status** — Health check and index stats (backend + embeddings).
 
-- **Monorepo**: `backend/` (Python + FastAPI), `frontend/` (React + Vite).
-- **Indexing**: Upload ZIP of codebase or index via public GitHub repo URL.
-- **Vector store**: Chroma (local only), no cloud vector DBs.
-- **LLM & embeddings**: OpenAI API or OpenRouter (keys and optional base URL from environment only).
-- **RAG**: Chunk code → embed → store in Chroma → retrieve top chunks for a question → LLM answers using only retrieved snippets.
-- **API**: `POST /index/zip`, `POST /index/github`, `POST /qa`, `GET /health`, `POST /refactor`, `GET /history`.
-- **Q&A response**: Final answer, references (file path + line ranges), and retrieved code snippets.
-- **Frontend**: Home, Q&A, Status (backend/DB/LLM health), History (last 10 Q&As).
-- **Error handling**: Empty upload, invalid GitHub URL, asking before indexing.
-- **Last 10 Q&As** stored in memory.
-- **“Make it your own”**: Refactor suggestions button with file references.
-- **Docker**: Dockerfile per app + `docker-compose` to run the whole stack with one command.
+---
 
-## What is not implemented
+## Try it live (Render)
 
-- Git initialization and GitHub remote setup (you do that manually).
-- User auth / multi-tenancy.
-- Persistence of Q&A history across server restarts (in-memory only).
-- Parsing of refactor suggestions into structured file/line fields (LLM returns a single text block).
+| Link | Description |
+|------|-------------|
+| [**Frontend**](https://repo-assistant-frontend.onrender.com/) | Use the app in the browser |
+| [**Backend**](https://repo-assistant-backend.onrender.com) | API root; interactive docs at [Backend `/docs`](https://repo-assistant-backend.onrender.com/docs) |
 
-## Architecture overview
+**Notes for the live demo:**
+
+- **Use small ZIPs only** — The app runs on Render’s free tier (512 MB RAM). Large uploads may time out or fail. Prefer small repos or a subset of files.
+- **If upload fails or you see “failed to fetch”** — Use **“Or GitHub repo URL”** instead: paste a **public** GitHub repo URL (e.g. `https://github.com/owner/repo`) and click **Index from GitHub**. The backend will clone and index the repo.
+
+---
+
+## Project structure
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌──────────────┐
-│   React     │────▶│   FastAPI   │────▶│   Chroma     │
-│   (Vite)    │     │   backend   │     │   (local)    │
-└─────────────┘     └──────┬──────┘     └──────────────┘
-                          │
-                          ▼
-                   ┌──────────────┐
-                   │  OpenAI API  │
-                   │ (embed+LLM)  │
-                   └──────────────┘
+├── backend/          # FastAPI app, ChromaDB, OpenAI/OpenRouter
+│   ├── app/
+│   │   ├── api.py    # Routes: index/zip, index/github, qa, health, history
+│   │   ├── config.py # Env-based config
+│   │   ├── vector_store.py
+│   │   ├── zip_loader.py
+│   │   ├── github_loader.py
+│   │   └── ...
+│   ├── .env.example
+│   └── requirements.txt
+├── frontend/         # React + Vite + TypeScript
+│   ├── src/
+│   └── package.json
+├── docker-compose.yml
+└── README.md
 ```
 
-- **Frontend**: SPA; calls backend at `/api` (proxied in dev and in Docker via nginx).
-- **Backend**: Serves index (ZIP/GitHub), Q&A, health, refactor, history. Uses Chroma for embeddings and OpenAI for embeddings + chat.
-- **RAG**: Index → chunk code → embed with OpenAI → store in Chroma. Query → retrieve similar chunks → send only those to LLM → return answer + references + snippets.
+---
 
-## API endpoints
+## Local development
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Backend, vector DB, and LLM status |
-| POST | `/index/zip` | Upload ZIP file; index into Chroma |
-| POST | `/index/github` | Body: `{ "repo_url": "https://github.com/owner/repo" }`; clone and index |
-| POST | `/qa` | Body: `{ "question": "..." }`; answer + references + retrieved_snippets |
-| POST | `/refactor` | Generate refactor suggestions (with file references) from indexed code |
-| GET | `/history` | Last 10 Q&A entries |
+### Prerequisites
 
-## How to run locally
+- **Docker** (recommended), or **Python 3.11+** and **Node.js** for running backend and frontend separately.
+- An **OpenAI** or **OpenRouter** API key for embeddings and chat.
 
-### With virtual environment (backend) + npm (frontend)
+### Quick start (Docker)
 
-1. **Backend**
-   - `cd backend`
-   - `python3 -m venv venv`
-   - `source venv/bin/activate` (Windows: `venv\Scripts\activate`)
-   - `pip install -r requirements.txt`
-   - Copy `backend/.env.example` to `backend/.env` and set `OPENAI_API_KEY`
-   - `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+1. Copy `backend/.env.example` to `backend/.env` and set your API key:
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env: OPENAI_API_KEY=sk-...
+   ```
+2. From the project root:
+   ```bash
+   docker compose up --build
+   ```
+3. Open [http://localhost:3000](http://localhost:3000). The frontend proxies `/api` to the backend at port 8000.
 
-2. **Frontend**
-   - `cd frontend`
-   - `npm install`
-   - `npm run dev`
-   - Open http://localhost:3000 (Vite proxies `/api` to backend on 8000)
+### Without Docker
 
-3. **Status**: Open the Status page to confirm backend, Chroma, and LLM are OK. Then index a ZIP or GitHub repo on the Q&A page and ask a question.
+- **Backend:**  
+  `cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000`
+- **Frontend:**  
+  `cd frontend && npm install && npm run dev`  
+  (Ensure the frontend is configured to talk to `http://localhost:8000` for API requests, e.g. via proxy or `VITE_API_URL`.)
+- Set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL` for OpenRouter) in `backend/.env` or your environment.
 
-### With Docker (one command)
+### Environment variables (backend)
 
-1. In the repo root, copy `.env.example` to `.env` and set `OPENAI_API_KEY`.
-2. Run: `docker compose up --build`
-3. Open http://localhost:3000 (frontend). API is at http://localhost:3000/api (proxied to backend).
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI or OpenRouter API key. |
+| `OPENAI_BASE_URL` | No | Override API base (e.g. `https://openrouter.ai/api/v1` for OpenRouter). |
+| `OPENAI_EMBEDDING_MODEL` | No | Default: `text-embedding-3-small` (or `openai/text-embedding-3-small` for OpenRouter). |
+| `OPENAI_CHAT_MODEL` | No | Default: `gpt-4o-mini` (or `openai/gpt-4o-mini` for OpenRouter). |
+| `CHROMA_PERSIST_DIR` | No | Directory for ChromaDB data (default: `./chroma_data`). |
+| `CHROMA_COLLECTION_NAME` | No | Collection name (default: `codebase_qa`). |
 
-Backend runs on port 8000; frontend (nginx) on 3000. Chroma data is persisted in a Docker volume.
-
-## Live hosting
-
-After deploying (e.g. to a VPS or PaaS), set the **Live link** at the top of this README to your app URL.
+Copy `backend/.env.example` to `backend/.env` and fill in; do not commit `.env` or API keys.
 
 ### Using OpenRouter
 
-To use an OpenRouter API key instead of OpenAI, set in `.env`:
+In `backend/.env`:
 
-```bash
+```env
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_API_KEY=sk-or-v1-your-openrouter-key
 ```
 
-Model names default to `openai/text-embedding-3-small` and `openai/gpt-4o-mini` when the base URL contains `openrouter`. You can override with `OPENAI_EMBEDDING_MODEL` and `OPENAI_CHAT_MODEL` if needed.
+---
+
+## API overview
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/index/zip` | Index code from an uploaded ZIP file (multipart). |
+| POST | `/index/github` | Index code from a public GitHub repo URL (JSON body: `repo_url`). |
+| POST | `/qa` | Ask a question (JSON: `question`); returns answer and sources. |
+| GET | `/health` | Backend and embedding service status. |
+| GET | `/history` | Recent Q&A and indexing history. |
+
+Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs) when running locally, or [Backend `/docs`](https://repo-assistant-backend.onrender.com/docs) for the live backend.
+
+---
+
+## Deploying to Render (or similar)
+
+- **Backend:** Build from `backend/` (or repo root with build context `backend/`). Set env vars (e.g. `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`). Use a persistent disk if you want ChromaDB data to survive restarts (Render: attach a disk to the backend service).
+- **Frontend:** Build from `frontend/` (e.g. `npm run build`); set `VITE_API_URL` (or equivalent) to your backend URL so the built app calls the correct API. Serve the `dist/` output with a static host or nginx.
+- **Free tier:** 512 MB RAM — keep ZIP uploads small; prefer GitHub URL for larger repos.
+
+---
+
+## Tech stack
+
+- **Backend:** FastAPI, ChromaDB, OpenAI-compatible embeddings and chat (OpenAI or OpenRouter).
+- **Frontend:** React, Vite, TypeScript, React Router, react-markdown, react-syntax-highlighter.
+
+---
+
+## Troubleshooting
+
+- **“OPENAI_API_KEY environment variable is not set”** — Create `backend/.env` from `backend/.env.example` and set `OPENAI_API_KEY`. With Docker, ensure the backend service uses `env_file: backend/.env` (or equivalent) so the container sees the key.
+- **“API key is invalid or was rejected”** — Use a valid key from [OpenAI](https://platform.openai.com/account/api-keys) or [OpenRouter](https://openrouter.ai/keys). For OpenRouter, set `OPENAI_BASE_URL=https://openrouter.ai/api/v1`.
+- **“No embedding data received” / indexing fails on large ZIP** — Backend batches adds and skips empty chunks; if it still fails, try a smaller ZIP or index via GitHub URL instead.
+- **“Failed to fetch” in browser** — Backend may be down or CORS/URL wrong. For the live demo, try **Index from GitHub** with a public repo URL.
+
+---
+
+## License
+
+MIT (or as specified in the repo).
